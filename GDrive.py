@@ -223,7 +223,7 @@ def get_file_id_from_path(file_path,creds=None,service=None):
 
     return file_id
 
-def get_all_files_in_a_folder(folder='Data/Tests',service=None,creds=None):
+def list_all_files_in_a_folder(folder='Data/Tests',service=None,creds=None):
     """
     Change:
         fields='files(id, name, parents, modifiedTime)'

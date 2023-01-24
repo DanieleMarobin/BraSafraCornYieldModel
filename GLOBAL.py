@@ -12,7 +12,7 @@ LLY = last_leap_year()
 LOCAL_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\'
 
 # Prices
-PRICE_DIR = r'\\ac-geneva-24\E\Prices\\'
+SECURITIES_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\Data\Securities\\'
 
 # Feed Grain Files
 FG_DIR = 'Data/FeedGrains/'
