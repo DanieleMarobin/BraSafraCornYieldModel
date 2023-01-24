@@ -77,7 +77,7 @@ def build_w_df_all(df_w_sel, w_vars=[GV.WV_PREC,GV.WV_TEMP_MAX], in_files=GV.WS_
     sel_hist_fore = [GV.WD_HIST, GV.WD_GFS]
         - must contain HIST and at least one forecast to make sense
     """
-    creds=gd.get_credentials()
+    service=gd.build_service()
 
     if GV.WV_SDD_30 in w_vars:
         w_vars.append(GV.WV_TEMP_MAX)
@@ -111,7 +111,7 @@ def build_w_df_all(df_w_sel, w_vars=[GV.WV_PREC,GV.WV_TEMP_MAX], in_files=GV.WS_
             donwload_dict['header'].append(0)
             donwload_dict['dayfirst'].append(True)
 
-    parallel_dfs=gd.read_csv_parallel(donwload_dict=donwload_dict,creds=creds,max_workers=500)
+    parallel_dfs=gd.read_csv_parallel(donwload_dict=donwload_dict, service=service, max_workers=500)
 
     # Looping 'WD_HIST', 'WD_GFS', 'WD_ECMWF', 'WD_GFS_EN', 'WD_ECMWF_EN'
     for key, value in fo.items():
