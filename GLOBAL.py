@@ -9,10 +9,12 @@ def last_leap_year():
 
 CUR_YEAR = dt.today().year
 LLY = last_leap_year()
+
 LOCAL_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\'
 
-# Prices
-SECURITIES_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\Data\Securities\\'
+# Securities
+SEC_DIR = 'Data/Securities/'
+SEC_DIR_LOCAL = LOCAL_DIR+SEC_DIR
 
 # Feed Grain Files
 FG_DIR = 'Data/FeedGrains/'

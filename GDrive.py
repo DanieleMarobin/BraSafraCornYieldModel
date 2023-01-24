@@ -28,6 +28,7 @@ Files properties:
     https://developers.google.com/drive/api/v3/reference/files
 
 
+'execute_query'
 Best part of all is the Query system to geet files and files information (check the function 'execute_query' and see where it is used).
 High-level:
     1) with a query (giving some conditions), you can seach the whole drive and identify which file you want
@@ -41,9 +42,9 @@ Query Examples:
     https://developers.google.com/drive/api/guides/search-files#examples
 """
 
-# import sys;
-# sys.path.append(r'C:\Monitor\\')
-# sys.path.append(r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\')
+import sys;
+sys.path.append(r'C:\Streamlit\Monitor\\') 
+sys.path.append(r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\')
 
 import os
 import os.path
@@ -60,6 +61,9 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload, MediaIoBaseUpload
 
+import  Utilities.Utilities as uu
+
+LOCAL_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\'
 
 def get_credentials() -> Credentials:
     # If modifying these scopes, delete the file token.json.
@@ -92,45 +96,135 @@ def get_credentials() -> Credentials:
 
     return creds
 
-def print_all_GDrive_files(max_n_files_to_print=1000):
-    """
-    I used it to see that files that GDrive sees
-    because one time, it kept getting files already deleted that were in the trash
-
-    import APIs.GDrive as gd
-    gd.print_all_GDrive_files()    
-    """        
-    print_name_id(pageSize=max_n_files_to_print)
+def get_cred_service():
+    creds=get_credentials()    
+    service = build('drive', 'v3', credentials=creds)
+    return creds, service
 
 
-def print_name_id(creds: Credentials=None, pageSize: int=1000) -> None:
-    if creds is None:
+def empty_trash(service=None):
+    try:
+        if service is None:
+            creds=get_credentials()
+            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+        service.files().emptyTrash().execute()
+        print('Trash emptied')
+        return True
+    except HttpError as error:
+        print(f'An error occurred: {error}')
+        return False    
+
+def get_GDrive_index_from_id(id='1jSKcuRbEMGDN0nZWpvoNyfl32D-3YFA3', service=None):
+    index_df=pd.read_csv(download_file_from_id(id, service=service), index_col='name')
+    return index_df['id'].to_dict()
+
+def get_GDrive_index_from_name(name='GDrive_Securities_index.csv',service=None):
+    '''
+    slow but shows all the steps
+    '''
+    
+    if service is None:
         creds=get_credentials()
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
+    id=get_file_id_from_name(file_name=name, service=service)
+
+    if id == None:
+        print('The global index does not exist')
+        return None
+    else:
+        print(f'Index id: {id}')
+        index_df=pd.read_csv(download_file_from_id(id, service=service), index_col='name')
+        return index_df['id'].to_dict()
+
+def get_all_files(creds: Credentials=None, pageSize: int=1000):
+    '''
+    the output 'items':
+        - is a list of dictionaries
+        - len(items) = number of files
+
+    each dictionary has 2 keys:
+        1) 'id'
+        2) 'name'
+
+    '''
+    if creds is None:
+        creds=get_credentials()    
     try:
         service = build('drive', 'v3', credentials=creds)
 
-        # Call the Drive v3 API
-        results = service.files().list(pageSize=pageSize, fields="nextPageToken, files(id, name)").execute()
-        items = results.get('files', [])
+        files = []
+        page_token = None
+        while True:
+            response = service.files().list(pageSize=pageSize, fields='nextPageToken, ''files(id, name)',pageToken=page_token).execute()
 
-        if not items:
-            print('No files found.')
-            return
-            
-        print('Files:')
-        for item in items:
-            print(u'{0} ({1})'.format(item['name'], item['id']))
+            files.extend(response.get('files', []))
+            page_token = response.get('nextPageToken', None)
+
+            if page_token is None:
+                break
+
+        return files
 
     except HttpError as error:
         # TODO(developer) - Handle errors from drive API.
         print(f'An error occurred: {error}')
 
-def execute_query(service, query = "name = 'last_update.csv'",fields='files(id, name, mimeType, parents)'):
+def create_GDrive_index_file(folder_to_index= 'Data/Securities', output_file_path='Data/Tests/GDrive_index.csv', max_n_files: int=1000, service=None):
+    # folder='Data/Tests'
+
+    if service is None:
+        creds=get_credentials()    
+        service = build('drive', 'v3', credentials=creds)
+
+    empty_trash(creds=creds, service=service)
+
+    if folder_to_index==None:
+        items = get_all_files(creds=creds, pageSize=max_n_files)
+    else:
+        items=list_all_files_in_a_folder(folder_to_index, creds=creds, service=service)
+
+    split = output_file_path.split('/')
+    output_folder = '/'.join(split[0:-1])
+    output_file_name = split[-1]
+
+    id=get_file_id_from_name(output_file_name, service=service) # check if the file already exists
+
+    df=pd.DataFrame(items)
+    
+    mask=df['name'].duplicated(keep=False)
+
+    if len(df[mask])>0:
+        print('Files with the same name:')
+        print(df[mask])
+    else:
+        print('All good')
+        print(f'There are: {len(df)} files')
+
+        df=df.set_index('name')
+        if id == None:
+            save_df(df,folder=output_folder,file_name=output_file_name, creds=creds, service=service)
+        else:
+            update_df_with_id(df=df,file_id=id, creds=creds, service=service)
+    print(f'Created: {output_file_name}')
+
+def print_all_GDrive_files(creds: Credentials=None, max_n_files_to_print: int=1000):
+    items = get_all_files(creds=creds, pageSize=max_n_files_to_print)
+            
+    print('Files:')
+    for item in items:
+        print(u'{0} ({1})'.format(item['name'], item['id']))
+
+def execute_query(query = "name = 'last_update.csv'",fields='files(id, name, mimeType, parents)', pageSize: int=1000, service=None):
+    if service is None:
+        creds=get_credentials()
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
     fo = []
     page_token = None
     while True:
-        response = service.files().list(q=query,spaces='drive',fields='nextPageToken,'+fields,pageToken=page_token).execute()
+        response = service.files().list(pageSize=pageSize, q=query,spaces='drive',fields='nextPageToken,'+fields,pageToken=page_token).execute()
         fo.extend(response.get('files', []))
         page_token = response.get('nextPageToken', None)
 
@@ -138,25 +232,23 @@ def execute_query(service, query = "name = 'last_update.csv'",fields='files(id, 
             break
     return fo
 
-def update_file_from_id(df, file_id,service=None,creds=None):
+def update_df_with_id(df, file_id,service=None):
     if service is None:
-        if creds is None:
-            creds=get_credentials()
+        creds=get_credentials()
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
     fh =BytesIO(bytes(df.to_csv(),'ascii'))
     media_body=MediaIoBaseUpload(fh, mimetype='text/csv')
     
     updated_file = service.files().update(fileId=file_id, media_body=media_body).execute()
-    print('Done update_file_from_id')
+    print('Done update_df_with_id')
 
-def save_in_folder(df,file_name='test.csv',folder='Data/Tests',service=None,creds=None):
+def save_df(df, file_name='test.csv',folder='Data/Tests',service=None):
     if service is None:
-        if creds is None:
-            creds=get_credentials()
+        creds=get_credentials()
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
-    folder_id=get_file_id_from_path(file_path=folder,creds=creds,service=service)
+    folder_id=get_file_id_from_path(file_path=folder,service=service)
 
     file_metadata = {
         'name': file_name,
@@ -170,10 +262,9 @@ def save_in_folder(df,file_name='test.csv',folder='Data/Tests',service=None,cred
     print('Saved',file_name)
 
 
-def download_file_from_id(file_id,service=None,creds=None):
+def download_file_from_id(file_id,service=None):
     if service is None:
-        if creds is None:
-            creds=get_credentials()
+        creds=get_credentials()
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
     request = service.files().get_media(fileId=file_id)
@@ -186,10 +277,34 @@ def download_file_from_id(file_id,service=None,creds=None):
     file.seek(0)    
     return file
 
-def get_file_id_from_path(file_path,creds=None,service=None):
+def get_file_id_from_name(file_name, service=None):
     if service is None:
-        if creds is None:
-            creds=get_credentials()
+        creds=get_credentials()
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+    fields='files(id, name, mimeType, parents)'
+
+    files_query=query=f"name = '{file_name}'"
+    files = execute_query(service=service, query=files_query, fields=fields)
+
+    if len(files)==0:
+        print('Cannot find:', file_name)
+        return None
+
+    files_dict={}
+    for f in files:
+        files_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents']}
+    fo=list(files_dict.keys())
+
+    if len(fo)>1:
+        print('More than 1 file with the same name', list(files_dict.keys()))
+        return None
+    else:
+        return list(files_dict.keys())[0]
+
+def get_file_id_from_path(file_path,service=None):
+    if service is None:
+        creds=get_credentials()
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
     split = file_path.split('/')
@@ -223,7 +338,7 @@ def get_file_id_from_path(file_path,creds=None,service=None):
 
     return file_id
 
-def list_all_files_in_a_folder(folder='Data/Tests',service=None,creds=None):
+def list_all_files_in_a_folder(folder='Data/Tests',service=None):
     """
     Change:
         fields='files(id, name, parents, modifiedTime)'
@@ -232,27 +347,26 @@ def list_all_files_in_a_folder(folder='Data/Tests',service=None,creds=None):
     """
 
     if service is None:
-        if creds is None:
-            creds=get_credentials()
-    
-    service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+        creds=get_credentials()    
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
-    folder_id=get_file_id_from_path(file_path=folder,creds=creds,service=service)
-    print(folder_id)
+    folder_id=get_file_id_from_path(file_path=folder, service=service)
+    print('folder_id:', folder_id)
 
-    fields='files(id, name, parents, modifiedTime)'
+    fields='files(id, name)'
     files_query=f"'{folder_id}' in parents"
     files = execute_query(service=service, query=files_query, fields=fields)
-
-    files_dict={}
-    for f in files:
-        files_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents'],'modifiedTime':f['modifiedTime']}
-
-    return files_dict
+    return files
 
 
-def download_file_from_path(creds: Credentials, file_path):
-    service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+def get_file_with_global_index(file_name, dict_name_id, service=None):
+    return pd.read_csv(download_file_from_id(dict_name_id[file_name], service=service))
+
+def download_file_from_path(file_path, service=None):
+
+    if service is None:
+        creds=get_credentials()    
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
     split = file_path.split('/')
     folders = split[0:-1]
@@ -282,7 +396,7 @@ def download_file_from_path(creds: Credentials, file_path):
         fo=[files_dict[f]['name']]
         dict_paths_id['/'.join(get_parent(id=files_dict[f]['parents'][0],folders_dict=folders_dict,fo=fo))]=f
             
-    return download_file_from_id(service=service, file_id= dict_paths_id[file_path])
+    return download_file_from_id(file_id= dict_paths_id[file_path], service=service)
 
 
 def get_parent(id,folders_dict,fo):
@@ -291,7 +405,7 @@ def get_parent(id,folders_dict,fo):
         get_parent(folders_dict[id]['parents'][0],folders_dict,fo)    
     return fo
 
-def read_csv_parallel(donwload_dict,creds=None,max_workers=500):
+def read_csv_parallel(donwload_dict, service=None,max_workers=500):
     fo={}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         results={}
@@ -304,39 +418,62 @@ def read_csv_parallel(donwload_dict,creds=None,max_workers=500):
             header=donwload_dict['header'][i] if 'header' in donwload_dict else 'infer'
             dayfirst=donwload_dict['dayfirst'][i] if 'dayfirst' in donwload_dict else False
 
-            results[file_path] = executor.submit(read_csv, file_path, creds, dtype, parse_dates, index_col, names, header, dayfirst)
+            results[file_path] = executor.submit(read_csv, file_path, service, dtype, parse_dates, index_col, names, header, dayfirst)
     
     for file_path, res in results.items():
         fo[file_path]=res.result()
 
     return fo
 
-def read_csv(file_path, creds=None, dtype=None, parse_dates=False, index_col=None, names=lib.no_default, header='infer', dayfirst=False, comment=False, force_reading_from_GCloud = False):        
-    if not os.path.exists(file_path) or force_reading_from_GCloud:
-        if comment:
-            print('Reading from GCloud:', file_path)
-        if creds==None: creds = get_credentials()
-        file_path=download_file_from_path(creds,file_path)        
-    else:
-        if comment:
-            print('Reading from Local:', file_path)
+
+def listdir(local_folder=None, cloud_folder=None, cloud_map_id=None, cloud_map=None, service=None):
+    '''
+    cloud_folder:
+        - folder='Data/Weather' or 'Data/Tests'
+
+    cloud_map_id:
+        a. id of the file mapping the selected folder
+        b. the above file is {file_name:file_id}
+
+    cloud_map:
+        - the file mentioned in point 'b.' above (no need to retrieve it again if we already have it)
+    '''
+    if ((local_folder is not None) and (cloud_folder is None)):
+        cloud_folder=local_folder # to try to see if there is an equivalent folder on the cloud
+
+    if ((local_folder is not None) and (os.path.exists(local_folder))):
+        all_files=os.listdir(local_folder)
+
+    elif cloud_folder is not None:
+        all_files=list_all_files_in_a_folder(folder=cloud_folder, service=service)
+        all_files=[f for f in all_files]
         
-    return pd.read_csv(file_path,dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
+    return all_files
 
-
-def uu_deserialize(file_path, comment=True):
-    if comment:print('Start Deserializing:', file_path)
-    obj= pickle.load(open(file_path, "rb"))
-    if comment:print('Done Deserializing:', file_path)
-    return obj
-
-def deserialize(file_path, creds=None,comment=False):
+def read_csv(file_path, service=None, dtype=None, parse_dates=False, index_col=None, names=lib.no_default, header='infer', dayfirst=False):
     if not os.path.exists(file_path):
-        if creds==None: creds = get_credentials()
-        file=download_file_from_path(creds,file_path)
+        file_path=LOCAL_DIR + file_path
+
+    if not os.path.exists(file_path):
+        if service is None:
+            creds=get_credentials()    
+            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+        file_path=download_file_from_path(file_path, service)
+        
+    return pd.read_csv(file_path, dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
+
+def deserialize(file_path, service=None, comment=False):
+    if not os.path.exists(file_path):
+        if service is None:
+            creds=get_credentials()
+            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+        file=download_file_from_path(file_path, service=None)
+
         return pickle.load(file)
     else:
-        return uu_deserialize(file_path, comment)
+        return uu.deserialize(file_path, comment)
 
 if __name__ == "__main__":
     get_credentials()
