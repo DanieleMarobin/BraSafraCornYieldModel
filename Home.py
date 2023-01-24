@@ -58,7 +58,7 @@ if True:
 
 # **************************** Calculation *********************************
 if True:
-    r = gd.deserialize(file,comment=False)
+    r = gd.deserialize(file)
     model = r['model'][id]
 
     # Get the data
