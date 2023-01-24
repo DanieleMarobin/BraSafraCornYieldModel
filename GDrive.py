@@ -61,7 +61,9 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload, MediaIoBaseUpload
 
+# Use the below to force reading from the cloud
 LOCAL_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\'
+# LOCAL_DIR = r'go to the cloud'
 
 def get_credentials() -> Credentials:
     # If modifying these scopes, delete the file token.json.
@@ -74,7 +76,7 @@ def get_credentials() -> Credentials:
     for folder in check_folders:
         if os.path.exists(folder+'token.json'):
             token_file=folder+'token.json'
-            print('Found:',token_file)
+            # print('Found:',token_file)
             break
 
     # The file token.json stores the user's access and refresh tokens, and is
@@ -101,7 +103,6 @@ def build_service(service=None):
 
     return service
 
-
 def empty_trash(service=None):
     try:
         service = build_service(service)
@@ -112,11 +113,11 @@ def empty_trash(service=None):
         print(f'An error occurred: {error}')
         return False    
 
-def get_GDrive_index_from_id(id='1jSKcuRbEMGDN0nZWpvoNyfl32D-3YFA3', service=None):
+def get_GDrive_map_from_id(id='1jSKcuRbEMGDN0nZWpvoNyfl32D-3YFA3', service=None):
     index_df=pd.read_csv(download_file_from_id(id, service=service), index_col='name')
     return index_df['id'].to_dict()
 
-def get_GDrive_index_from_name(name='GDrive_Securities_index.csv',service=None):
+def get_GDrive_map_from_name(name='GDrive_Securities_index.csv',service=None):
     '''
     slow but shows all the steps
     '''
@@ -246,8 +247,48 @@ def save_df(df, file_name='test.csv',folder='Data/Tests',service=None):
     file = service.files().create(body=file_metadata, media_body=media_body).execute()
     print('Saved',file_name)
 
+def download_file_from_path(file_path, service=None):
 
-def download_file_from_id(file_id,service=None):
+    service = build_service(service)
+
+    split = file_path.split('/')
+    folders = split[0:-1]
+    file_name = split[-1]
+    
+    # Get file
+    fields='files(id, name, mimeType, parents)'
+    files_query=f"name = '{file_name}'"
+    files = execute_query(service=service, query=files_query, fields=fields)
+
+    files_dict={}
+    for f in files:
+        files_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents']}
+
+    # Get folder
+    if len(folders)>0:
+        folders_query = "trashed = false and mimeType = 'application/vnd.google-apps.folder'"
+        folders = execute_query(service=service, query=folders_query, fields=fields)
+
+        folders_dict={}
+        for f in folders:
+            if 'parents' in f:
+                folders_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents']}
+
+        dict_paths_id={}
+
+        for f in files_dict:
+            fo=[files_dict[f]['name']]
+            dict_paths_id['/'.join(get_parent(id=files_dict[f]['parents'][0],folders_dict=folders_dict,fo=fo))]=f
+                
+        return download_file_from_id(file_id= dict_paths_id[file_path], service=service)
+    
+    else:
+        # At the moment it only gets the first one
+        return download_file_from_id(file_id= files[0]['id'], service=service)
+
+
+
+def download_file_from_id(file_id, service=None):
     service = build_service(service)
 
     request = service.files().get_media(fileId=file_id)
@@ -339,40 +380,6 @@ def list_all_files_in_a_folder(folder='Data/Tests',service=None):
 def get_file_with_global_index(file_name, dict_name_id, service=None):
     return pd.read_csv(download_file_from_id(dict_name_id[file_name], service=service))
 
-def download_file_from_path(file_path, service=None):
-
-    service = build_service(service)
-
-    split = file_path.split('/')
-    folders = split[0:-1]
-    file_name = split[-1]
-
-    # Get file
-    fields='files(id, name, mimeType, parents)'
-    files_query=f"name = '{file_name}'"
-    files = execute_query(service=service, query=files_query, fields=fields)
-
-    files_dict={}
-    for f in files:
-        files_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents']}
-
-    # Get folder
-    folders_query = "trashed = false and mimeType = 'application/vnd.google-apps.folder'"
-    folders = execute_query(service=service, query=folders_query, fields=fields)
-
-    folders_dict={}
-    for f in folders:
-        if 'parents' in f:
-            folders_dict[f['id']]={'name':f['name'],'id':f['id'],'parents':f['parents']}
-
-    dict_paths_id={}
-
-    for f in files_dict:
-        fo=[files_dict[f]['name']]
-        dict_paths_id['/'.join(get_parent(id=files_dict[f]['parents'][0],folders_dict=folders_dict,fo=fo))]=f
-            
-    return download_file_from_id(file_id= dict_paths_id[file_path], service=service)
-
 
 def get_parent(id,folders_dict,fo):
     if (id in folders_dict) and ('parents' in folders_dict[id]):
@@ -401,7 +408,7 @@ def read_csv_parallel(donwload_dict, service=None, max_workers=500):
     return fo
 
 
-def listdir(local_folder=None, cloud_folder=None, cloud_map_id=None, cloud_map=None, service=None):
+def listdir(folder=None, cloud_map_id=None, cloud_map_dict=None, service=None):
     '''
     cloud_folder:
         - folder='Data/Weather' or 'Data/Tests'
@@ -413,19 +420,33 @@ def listdir(local_folder=None, cloud_folder=None, cloud_map_id=None, cloud_map=N
     cloud_map:
         - the file mentioned in point 'b.' above (no need to retrieve it again if we already have it)
     '''
-    if ((local_folder is not None) and (cloud_folder is None)):
-        cloud_folder=local_folder # to try to see if there is an equivalent folder on the cloud
+    
+    folder = get_path(folder)
 
-    if ((local_folder is not None) and (os.path.exists(local_folder))):
-        all_files=os.listdir(local_folder)
+    if os.path.exists(folder):
+        all_files=os.listdir(folder)
 
-    elif cloud_folder is not None:
-        all_files=list_all_files_in_a_folder(folder=cloud_folder, service=service)
-        all_files=[f for f in all_files]
+    elif cloud_map_dict is not None:
+        all_files=list(cloud_map_dict.keys())
+
+    elif cloud_map_id is not None:
+        cloud_map_dict=get_GDrive_map_from_id(cloud_map_id, service=service)
+        all_files=list(cloud_map_dict.keys())
+
+    else:
+        # Remove the last '/' in case it is there
+        if folder[-1]=='/':
+            folder=folder[0:-1]
+
+        all_files=list_all_files_in_a_folder(folder=folder, service=service)
+        all_files=[f['name'] for f in all_files]
         
     return all_files
 
 def get_path(file_path):
+    if file_path is None:
+        return ''
+
     if not os.path.exists(file_path):
         local_path=LOCAL_DIR + file_path
 
@@ -434,20 +455,28 @@ def get_path(file_path):
 
     return file_path
 
-
+def is_cloud_id(file_path):
+    return ((len(file_path)==33) and ('.' not in file_path))
 
 def read_csv(file_path, service=None, dtype=None, parse_dates=False, index_col=None, names=lib.no_default, header='infer', dayfirst=False):
 
     file_path=get_path(file_path)
 
+    # If the file doesn't exist on the local drive: go to the cloud
     if not os.path.exists(file_path):
         service = build_service(service)
-        file_path=download_file_from_path(file_path, service)
+
+        if is_cloud_id(file_path):
+            # print('Cloud id')
+            file_path=download_file_from_id(file_path, service)
+        else:
+            # print('Cloud path')
+            file_path=download_file_from_path(file_path, service)            
         
     return pd.read_csv(file_path, dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
 
 def deserialize(file_path, service=None):
-    
+
     file_path=get_path(file_path)
 
     if not os.path.exists(file_path):
