@@ -111,7 +111,7 @@ def build_w_df_all(df_w_sel, w_vars=[GV.WV_PREC,GV.WV_TEMP_MAX], in_files=GV.WS_
             donwload_dict['header'].append(0)
             donwload_dict['dayfirst'].append(True)
 
-    parallel_dfs=gd.read_csv_parallel(donwload_dict=donwload_dict, service=service, max_workers=500)
+    parallel_dfs=gd.read_csv_parallel(donwload_dict=donwload_dict, service=None, max_workers=500)
 
     # Looping 'WD_HIST', 'WD_GFS', 'WD_ECMWF', 'WD_GFS_EN', 'WD_ECMWF_EN'
     for key, value in fo.items():

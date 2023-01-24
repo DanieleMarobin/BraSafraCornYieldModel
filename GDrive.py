@@ -380,7 +380,7 @@ def get_parent(id,folders_dict,fo):
         get_parent(folders_dict[id]['parents'][0],folders_dict,fo)    
     return fo
 
-def read_csv_parallel(donwload_dict, service=None,max_workers=500):
+def read_csv_parallel(donwload_dict, service=None, max_workers=500):
     fo={}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         results={}
