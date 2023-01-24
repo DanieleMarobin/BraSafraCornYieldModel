@@ -99,13 +99,17 @@ def get_cred_service():
     service = build('drive', 'v3', credentials=creds)
     return creds, service
 
+def build_service(service):
+    if service is None:
+        creds=get_credentials()    
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    else:
+        return service
+
 
 def empty_trash(service=None):
     try:
-        if service is None:
-            creds=get_credentials()
-            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-
+        service = build_service(service)
         service.files().emptyTrash().execute()
         print('Trash emptied')
         return True
@@ -122,10 +126,7 @@ def get_GDrive_index_from_name(name='GDrive_Securities_index.csv',service=None):
     slow but shows all the steps
     '''
     
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-
+    service = build_service(service)
     id=get_file_id_from_name(file_name=name, service=service)
 
     if id == None:
@@ -136,7 +137,7 @@ def get_GDrive_index_from_name(name='GDrive_Securities_index.csv',service=None):
         index_df=pd.read_csv(download_file_from_id(id, service=service), index_col='name')
         return index_df['id'].to_dict()
 
-def get_all_files(creds: Credentials=None, pageSize: int=1000):
+def get_all_files(service=None, pageSize: int=1000):
     '''
     the output 'items':
         - is a list of dictionaries
@@ -147,10 +148,9 @@ def get_all_files(creds: Credentials=None, pageSize: int=1000):
         2) 'name'
 
     '''
-    if creds is None:
-        creds=get_credentials()    
+    
     try:
-        service = build('drive', 'v3', credentials=creds)
+        service = build_service(service)
 
         files = []
         page_token = None
@@ -172,16 +172,13 @@ def get_all_files(creds: Credentials=None, pageSize: int=1000):
 def create_GDrive_index_file(folder_to_index= 'Data/Securities', output_file_path='Data/Tests/GDrive_index.csv', max_n_files: int=1000, service=None):
     # folder='Data/Tests'
 
-    if service is None:
-        creds=get_credentials()    
-        service = build('drive', 'v3', credentials=creds)
-
-    empty_trash(creds=creds, service=service)
+    service = build_service(service)
+    empty_trash(service=service)
 
     if folder_to_index==None:
-        items = get_all_files(creds=creds, pageSize=max_n_files)
+        items = get_all_files(service=service, pageSize=max_n_files)
     else:
-        items=list_all_files_in_a_folder(folder_to_index, creds=creds, service=service)
+        items=list_all_files_in_a_folder(folder=folder_to_index, service=service)
 
     split = output_file_path.split('/')
     output_folder = '/'.join(split[0:-1])
@@ -202,9 +199,9 @@ def create_GDrive_index_file(folder_to_index= 'Data/Securities', output_file_pat
 
         df=df.set_index('name')
         if id == None:
-            save_df(df,folder=output_folder,file_name=output_file_name, creds=creds, service=service)
+            save_df(df,folder=output_folder,file_name=output_file_name, service=service)
         else:
-            update_df_with_id(df=df,file_id=id, creds=creds, service=service)
+            update_df_with_id(df=df,file_id=id, service=service)
     print(f'Created: {output_file_name}')
 
 def print_all_GDrive_files(creds: Credentials=None, max_n_files_to_print: int=1000):
@@ -215,9 +212,7 @@ def print_all_GDrive_files(creds: Credentials=None, max_n_files_to_print: int=10
         print(u'{0} ({1})'.format(item['name'], item['id']))
 
 def execute_query(query = "name = 'last_update.csv'",fields='files(id, name, mimeType, parents)', pageSize: int=1000, service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     fo = []
     page_token = None
@@ -231,9 +226,7 @@ def execute_query(query = "name = 'last_update.csv'",fields='files(id, name, mim
     return fo
 
 def update_df_with_id(df, file_id,service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     fh =BytesIO(bytes(df.to_csv(),'ascii'))
     media_body=MediaIoBaseUpload(fh, mimetype='text/csv')
@@ -242,9 +235,7 @@ def update_df_with_id(df, file_id,service=None):
     print('Done update_df_with_id')
 
 def save_df(df, file_name='test.csv',folder='Data/Tests',service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     folder_id=get_file_id_from_path(file_path=folder,service=service)
 
@@ -261,9 +252,7 @@ def save_df(df, file_name='test.csv',folder='Data/Tests',service=None):
 
 
 def download_file_from_id(file_id,service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     request = service.files().get_media(fileId=file_id)
     file = BytesIO()
@@ -276,9 +265,7 @@ def download_file_from_id(file_id,service=None):
     return file
 
 def get_file_id_from_name(file_name, service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     fields='files(id, name, mimeType, parents)'
 
@@ -301,9 +288,7 @@ def get_file_id_from_name(file_name, service=None):
         return list(files_dict.keys())[0]
 
 def get_file_id_from_path(file_path,service=None):
-    if service is None:
-        creds=get_credentials()
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     split = file_path.split('/')
     folders = split[0:-1]
@@ -344,9 +329,7 @@ def list_all_files_in_a_folder(folder='Data/Tests',service=None):
     to get a different set of information
     """
 
-    if service is None:
-        creds=get_credentials()    
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     folder_id=get_file_id_from_path(file_path=folder, service=service)
     print('folder_id:', folder_id)
@@ -362,9 +345,7 @@ def get_file_with_global_index(file_name, dict_name_id, service=None):
 
 def download_file_from_path(file_path, service=None):
 
-    if service is None:
-        creds=get_credentials()    
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    service = build_service(service)
 
     split = file_path.split('/')
     folders = split[0:-1]
@@ -448,15 +429,23 @@ def listdir(local_folder=None, cloud_folder=None, cloud_map_id=None, cloud_map=N
         
     return all_files
 
+def get_path(file_path):
+    if not os.path.exists(file_path):
+        local_path=LOCAL_DIR + file_path
+
+        if os.path.exists(local_path):
+            return local_path
+
+    return file_path
+
+
+
 def read_csv(file_path, service=None, dtype=None, parse_dates=False, index_col=None, names=lib.no_default, header='infer', dayfirst=False):
-    if not os.path.exists(file_path):
-        file_path=LOCAL_DIR + file_path
+
+    file_path=get_path(file_path)
 
     if not os.path.exists(file_path):
-        if service is None:
-            creds=get_credentials()    
-            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-
+        service = build_service(service)
         file_path=download_file_from_path(file_path, service)
         
     return pd.read_csv(file_path, dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
@@ -466,9 +455,7 @@ def deserialize(file_path, service=None):
         file_path=LOCAL_DIR + file_path
 
     if not os.path.exists(file_path):
-        if service is None:
-            creds=get_credentials()
-            service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+        service = build_service(service)
 
         file=download_file_from_path(file_path, service=None)
 
