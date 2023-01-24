@@ -61,8 +61,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload, MediaIoBaseUpload
 
-import  Utilities.Utilities as uu
-
 LOCAL_DIR = r'\\ac-geneva-24\E\grains trading\Streamlit\Monitor\\'
 
 def get_credentials() -> Credentials:
@@ -463,7 +461,10 @@ def read_csv(file_path, service=None, dtype=None, parse_dates=False, index_col=N
         
     return pd.read_csv(file_path, dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
 
-def deserialize(file_path, service=None, comment=False):
+def deserialize(file_path, service=None):
+    if not os.path.exists(file_path):
+        file_path=LOCAL_DIR + file_path
+
     if not os.path.exists(file_path):
         if service is None:
             creds=get_credentials()
@@ -473,7 +474,7 @@ def deserialize(file_path, service=None, comment=False):
 
         return pickle.load(file)
     else:
-        return uu.deserialize(file_path, comment)
+        return pickle.load(open(file_path, "rb"))
 
 if __name__ == "__main__":
     get_credentials()
