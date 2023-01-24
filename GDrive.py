@@ -94,17 +94,12 @@ def get_credentials() -> Credentials:
 
     return creds
 
-def get_cred_service():
-    creds=get_credentials()    
-    service = build('drive', 'v3', credentials=creds)
-    return creds, service
-
-def build_service(service):
+def build_service(service=None):
     if service is None:
         creds=get_credentials()    
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-    else:
-        return service
+
+    return service
 
 
 def empty_trash(service=None):
@@ -212,6 +207,7 @@ def print_all_GDrive_files(creds: Credentials=None, max_n_files_to_print: int=10
         print(u'{0} ({1})'.format(item['name'], item['id']))
 
 def execute_query(query = "name = 'last_update.csv'",fields='files(id, name, mimeType, parents)', pageSize: int=1000, service=None):
+
     service = build_service(service)
 
     fo = []
