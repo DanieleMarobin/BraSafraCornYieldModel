@@ -447,8 +447,8 @@ def read_csv(file_path, service=None, dtype=None, parse_dates=False, index_col=N
     return pd.read_csv(file_path, dtype=dtype,parse_dates=parse_dates,index_col=index_col,names=names,header=header,dayfirst=dayfirst)
 
 def deserialize(file_path, service=None):
-    if not os.path.exists(file_path):
-        file_path=LOCAL_DIR + file_path
+    
+    file_path=get_path(file_path)
 
     if not os.path.exists(file_path):
         service = build_service(service)
