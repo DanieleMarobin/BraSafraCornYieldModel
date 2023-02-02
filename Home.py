@@ -9,7 +9,7 @@ import pandas as pd
 
 import streamlit as st
 
-import Corn_BRA_Yield_GA as mb
+import Corn_BRA_Safra_Yield_GA as mb
 
 import GDrive as gd
 
